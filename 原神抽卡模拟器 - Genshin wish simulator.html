@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -231,6 +232,35 @@ h1 {
   50%      { box-shadow: 0 0 26px rgba(255, 199, 80, .9); }
 }
 
+/* 抽卡一闪而过的横线 */
+.anim-line {
+  position: fixed;
+  top: 50%;
+  left: 0;
+  height: 3px;
+  width: 100%;
+  transform: translateX(-100%);
+  opacity: 0;
+  z-index: 200;
+  pointer-events: none;
+  border-radius: 99px;
+}
+.anim-line.play {
+  animation: lineSweep .6s ease-out forwards;
+}
+.anim-line.r5.play {
+  animation-duration: 1.0s;  /* 五星延长到 1.0s */
+  height: 4px;
+  box-shadow: 0 0 18px 4px currentColor,
+              0 0 40px 10px rgba(246, 201, 79, .55);
+}
+@keyframes lineSweep {
+  0%   { transform: translateX(-100%); opacity: 0; }
+  15%  { opacity: 1; }
+  85%  { opacity: 1; }
+  100% { transform: translateX(100%); opacity: 0; }
+}
+
 /* 按钮 */
 .actions { display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; }
 .btn {
@@ -434,6 +464,7 @@ footer { text-align: center; color: var(--muted); font-size: 12px; opacity: .6; 
     <button class="btn btn-outline-gold" id="pull100Btn" onclick="pullN(100)">我要抽 100 次！</button>
     <button class="btn" id="recordBtn" onclick="openRecords()">查看记录</button>
     <button class="btn btn-danger" onclick="resetAll()">重置</button>
+    <button class="btn" id="animToggleBtn" onclick="toggleAnim()">抽卡动画：已关闭</button>
   </div>
 
   <!-- 抽取结果 -->
@@ -530,17 +561,18 @@ footer { text-align: center; color: var(--muted); font-size: 12px; opacity: .6; 
 </div>
 
 <div id="toast"></div>
+<div id="animLine" class="anim-line"></div>
 
 <script>
 "use strict";
 
 // ===================== 配置数据 =====================
 let CONFIG = {
-  version: "7.0",
-  stage: "下半",
-  default_up: "菲林斯",
-  up_1: "菲林斯",
-  up_2: "伊涅芙",
+  version: "7.1",
+  stage: "上半",
+  default_up: "薇斯纳",
+  up_1: "薇斯纳",
+  up_2: "沃雅妮莎",
   limited_chars: {
     "蒙德": ["温迪", "可莉", "阿贝多", "优菈", "杜林", "法尔伽", "洛恩"],
     "璃月": ["钟离", "甘雨", "魈", "胡桃", "申鹤", "夜兰", "白术", "闲云", "兹白"],
@@ -549,14 +581,14 @@ let CONFIG = {
     "枫丹": ["芙宁娜", "林尼", "那维莱特", "莱欧斯利", "娜维娅", "千织", "克洛琳德", "希格雯", "艾梅莉埃", "爱可菲"],
     "纳塔": ["玛薇卡", "玛拉妮", "基尼奇", "希诺宁", "恰斯卡", "茜特菈莉", "瓦雷莎"],
     "挪德卡莱": ["哥伦比娅", "伊涅芙", "菈乌玛", "菲林斯", "奈芙尔", "莉奈娅", "尼可"],
-    "至冬": ["安娜丝塔夏", "达达利亚", "阿蕾奇诺", "桑多涅", "奥黛塔", "薇斯娜", "沃雅妮莎"],
+    "至冬": ["安娜丝塔夏", "达达利亚", "阿蕾奇诺", "桑多涅", "奥黛塔", "薇斯纳", "沃雅妮莎", "米提亚", "达妮卡"],
     "其他": ["丝柯克"]
   },
   standard_chars: ["刻晴", "迪卢克", "七七", "琴", "莫娜", "提纳里", "迪希雅", "梦见月瑞希"],
-  four_star_characters: ["伊安珊", "爱诺", "蓝砚"],
+  four_star_characters: ["迪奥娜", "重云", "珐露珊"],
   weapon_banner: {
-    up1: { name: "血染荒城", type: "长枪" },
-    up2: { name: "支离轮光", type: "长枪" }
+    up1: { name: "蝶变", type: "单手剑" },
+    up2: { name: "漩流颂歌", type: "法器" }
   },
   standard_weapons: [
     { name: "天空之刃", type: "单手剑" },
@@ -1131,6 +1163,57 @@ function singleChronicledPull() {
   return { star, name, pull_number, is_weapon, is_limited, distort_this_time };
 }
 
+let animTimer = null;
+let animEnabled = false;
+
+function toggleAnim() {
+  animEnabled = !animEnabled;
+  const btn = $("animToggleBtn");
+  btn.textContent = "抽卡动画：" + (animEnabled ? "已开启" : "已关闭");
+  // 关闭时如有正在播放的动画，立即清除
+  if (!animEnabled) {
+    clearTimeout(animTimer);
+    const el = $("animLine");
+    el.classList.remove("play", "r5");
+  }
+  toast("抽卡动画已" + (animEnabled ? "开启" : "关闭"), "ok");
+}
+
+function playAnim(star, callback) {
+  const el = $("animLine");
+  // 重置动画：去掉 play 类并强制回流，让下一次动画从头播
+  el.classList.remove("play", "r5");
+  el.style.background = "none";
+  void el.offsetWidth;
+
+  if (star === 5) {
+    el.style.background =
+      "linear-gradient(90deg, transparent, #5db8ff 25%, #f6c94f 65%, #fff3c4 90%)";
+    el.style.color = "#f6c94f";
+    el.classList.add("r5");
+  } else if (star === 4) {
+    el.style.background =
+      "linear-gradient(90deg, transparent, #5db8ff 35%, #b57bff 75%, #e6d3ff 95%)";
+    el.style.color = "#b57bff";
+  } else {
+    el.style.background =
+      "linear-gradient(90deg, transparent, #5db8ff 55%, #bfe3ff 90%)";
+    el.style.color = "#5db8ff";
+  }
+
+  // 触发动画
+  void el.offsetWidth;
+  el.classList.add("play");
+
+  // 动画结束后绘制结果（不阻塞用户继续点击）
+  const duration = star === 5 ? 1200 : 800;
+  clearTimeout(animTimer);
+  animTimer = setTimeout(() => {
+    el.classList.remove("play", "r5");
+    callback();
+  }, duration);
+}
+
 // ===================== 通用抽卡调度 =====================
 function pullN(n) {
   const mode = currentMode;
@@ -1143,10 +1226,25 @@ function pullN(n) {
     else res = singleStandardPull();
     if (res && res.star !== undefined) results.push(res);
   }
-  renderResults(results);
-  updateStats();
-  updateUpDisplay();
-  if ($("recordsModal").classList.contains("show")) renderRecords();
+
+  const doRender = () => {
+    renderResults(results);
+    updateStats();
+    updateUpDisplay();
+    if ($("recordsModal").classList.contains("show")) renderRecords();
+  };
+
+  // 100 抽或动画关闭时，不播放动画，直接渲染
+  if (n >= 100 || !animEnabled) { doRender(); return; }
+
+  // 单抽/十抽：取本次结果中的最高星级
+  const maxStar = results.reduce((m, r) => Math.max(m, r.star), 0);
+
+  // 0 星（混池未设置等异常）也直接渲染
+  if (maxStar === 0) { doRender(); return; }
+
+  // 播放动画，动画结束后再绘制结果
+  playAnim(maxStar, doRender);
 }
 
 // ===================== 重置 =====================
@@ -2309,11 +2407,11 @@ function showStandardFormat() {
   closeModal('importModal');
   const container = document.getElementById('standardBody');
   const standardJson = {
-    version: "7.0",
+    version: "7.1",
     stage: "上半",
-    default_up: "奥黛塔",
-    up_1: "奥黛塔",
-    up_2: "阿蕾奇诺",
+    default_up: "薇斯纳",
+    up_1: "薇斯纳",
+    up_2: "沃雅妮莎",
     limited_chars: {
       "蒙德": ["温迪", "可莉", "阿贝多", "优菈", "杜林", "法尔伽", "洛恩"],
       "璃月": ["钟离", "甘雨", "魈", "胡桃", "申鹤", "夜兰", "白术", "闲云", "兹白"],
@@ -2322,14 +2420,14 @@ function showStandardFormat() {
       "枫丹": ["芙宁娜", "林尼", "那维莱特", "莱欧斯利", "娜维娅", "千织", "克洛琳德", "希格雯", "艾梅莉埃", "爱可菲"],
       "纳塔": ["玛薇卡", "玛拉妮", "基尼奇", "希诺宁", "恰斯卡", "茜特菈莉", "瓦雷莎"],
       "挪德卡莱": ["哥伦比娅", "伊涅芙", "菈乌玛", "菲林斯", "奈芙尔", "莉奈娅", "尼可"],
-      "至冬": ["安娜丝塔夏", "达达利亚", "阿蕾奇诺", "桑多涅", "奥黛塔", "薇斯娜", "沃雅妮莎"],
+      "至冬": ["安娜丝塔夏", "达达利亚", "阿蕾奇诺", "桑多涅", "奥黛塔", "薇斯纳", "沃雅妮莎", "米提亚", "达妮卡"],
       "其他": ["丝柯克"]
     },
     standard_chars: ["刻晴", "迪卢克", "七七", "琴", "莫娜", "提纳里", "迪希雅", "梦见月瑞希"],
-    four_star_characters: ["阿罗夏", "砂糖", "琳妮特"],
+    four_star_characters: ["迪奥娜", "重云", "珐露珊"],
     weapon_banner: {
-      up1: { name: "白湖冬羽", type: "单手剑" },
-      up2: { name: "赤月之形", type: "长枪" }
+      up1: { name: "蝶变", type: "单手剑" },
+      up2: { name: "漩流颂歌", type: "法器" }
     },
     standard_weapons: [
       { name: "天空之刃", type: "单手剑" },
